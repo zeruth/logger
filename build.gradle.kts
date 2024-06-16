@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "nulled"
-version = "1.0"
+version = "1.1"
 
 repositories {
     mavenCentral()
@@ -13,16 +13,12 @@ repositories {
 publishing {
     repositories {
         maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/zeruth/annotations")
-            credentials {
-                username = System.getenv("USERNAME")
-                password = System.getenv("TOKEN")
-            }
+            val propjectDIr = project.layout.projectDirectory
+            url = uri("file://$propjectDIr/.nulled-repo")
         }
     }
     publications {
-        register<MavenPublication>("gpr") {
+        register<MavenPublication>("maven") {
             from(components["java"])
         }
     }

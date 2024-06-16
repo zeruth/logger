@@ -1,98 +1,153 @@
 package meteor
 
-import java.lang.Exception
-import java.lang.StringBuilder
-import java.util.*
+import meteor.ANSI_COLORS.ANSI_GREEN
+import meteor.ANSI_COLORS.ANSI_PURPLE
+import meteor.ANSI_COLORS.ANSI_RED
+import meteor.ANSI_COLORS.ANSI_RESET
+import meteor.ANSI_COLORS.ANSI_WHITE
+import meteor.ANSI_COLORS.ANSI_YELLOW
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlin.reflect.KClass
 
 class Logger(var name: String) {
-    var plugin: String? = null
-    var format = "%-35s%s%n"
-    fun info(message: Any, vararg replacers: Any) {
-        printColorMessageReplacers(ANSI_WHITE, message, *replacers)
+    fun info(message: String,
+             nameColor: String? = ANSI_WHITE, headerText: String? = null) {
+        printMessage(
+            messageColor = ANSI_WHITE,
+            message = message,
+            headerColor = nameColor,
+            headerText = headerText
+        )
     }
 
-    fun warn(message: Any, vararg replacers: Any) {
-        printColorMessageReplacers(ANSI_YELLOW, message, *replacers)
+    fun warn(message: String,
+             headerColor: String? = ANSI_YELLOW, headerText: String? = null) {
+        printMessage(
+            messageColor = ANSI_YELLOW,
+            message = message,
+            headerColor = headerColor,
+            headerText = headerText
+        )
     }
 
-    fun warn(message: String, e: Exception) {
-        printColorMessage(ANSI_RED, message)
-        e.printStackTrace()
-    }
-
-    fun debug(message: Any, vararg replacers: Any) {
-        if (!isDebugEnabled) {
+    fun debug(message: String,
+              headerColor: String? = ANSI_GREEN, headerText: String? = null) {
+        if (!showDebug) {
             return
         }
-        printColorMessageReplacers(ANSI_GREEN, message, *replacers)
+        printMessage(
+            messageColor = ANSI_GREEN,
+            message = message,
+            headerColor = headerColor,
+            headerText = headerText
+        )
     }
 
-    fun error(message: Any, vararg replacers: Any) {
-        printColorMessageReplacers(ANSI_RED, message, *replacers)
+    fun error(message: String,
+              headerColor: String? = ANSI_RED,
+              headerText: String? = null) {
+        printMessage(
+            messageColor = ANSI_RED,
+            message = message,
+            headerColor = headerColor,
+            headerText = headerText
+        )
     }
 
-    private fun printColorMessage(ansiColor: String, message: Any) {
-        val tempName: String = if (plugin != null) {
-            plugin.toString()
-        } else {
-            name
-        }
-        val header = Message.newMessage()
-                .add(DEFAULT_CONTROLLER_COLOR, "[$tempName] ")
-                .build()
-        System.out.format(format, header, ansiColor + message)
-        print(ANSI_RESET)
+    fun error(exception: Exception,
+              headerColor: String? = ANSI_RED,
+              headerText: String? = null) {
+        printMessage(
+            messageColor = ANSI_RED,
+            message = "\n" + exception.stackTraceToString().trimEnd('\n'),
+            headerColor = headerColor,
+            headerText = headerText
+        )
     }
 
-    private fun printColorMessageReplacers(ansiColor: String, message: Any, vararg replacers: Any) {
-        val sRef: String = try {
-            message as String
-        } catch (e: Exception) {
-            printColorMessage(ansiColor, message)
-            return
+    private fun printMessage(messageColor: String, message: String,
+                             headerColor: String?, headerText: String?) {
+        var hText = ""
+        var headerLength = 0
+        if (headerColor != null) {
+            hText += headerColor
         }
-        if (!sRef.contains("{}")) {
-            printColorMessage(ansiColor, sRef)
-            return
-        }
-        val finalMessage = StringBuilder()
-        val replacersArray = Arrays.stream(replacers).toArray()
-        for ((i, s) in sRef.split("{}").toTypedArray().withIndex()) {
-            if (i != replacersArray.size) finalMessage.append(s).append(replacersArray[i]) else finalMessage.append(s)
-        }
-        printColorMessage(ansiColor, finalMessage)
+        val text = if (headerText == null) "[$name]" else "[$name:$headerText]"
+        headerLength = text.length
+        hText += text
+        hText += ANSI_RESET
+
+        val m = "$messageColor$message$ANSI_RESET"
+
+        var finalText = if (hText.isNotEmpty())
+            format(hText, headerLength, m)
+        else
+            m
+
+        logFile.appendText(getCurrentTime() + sanitizeANSIString("$finalText\n"))
+        println(finalText)
     }
+
+    fun format(header: String, headerLength: Int, message: String): String {
+        var t = header
+        var i = 0
+        while (i < ((headerLength + 5) - (headerLength % 5)) - headerLength) {
+            t += " "
+            i++
+        }
+        return t + message
+    }
+
+    private fun sanitizeANSIString(input: String): String {
+        val ansiRegex = """\u001B\[[0-9;]*[a-zA-Z]""".toRegex()
+        return ansiRegex.replace(input, "")
+    }
+
+
 
     companion object {
-        const val ANSI_RESET = "\u001B[0m"
-        const val ANSI_BLACK = "\u001B[30m"
-        const val ANSI_RED = "\u001B[31m"
-        const val ANSI_GREEN = "\u001B[32m"
-        const val ANSI_YELLOW = "\u001B[33m"
-        const val ANSI_BLUE = "\u001B[34m"
-        const val ANSI_PURPLE = "\u001B[35m"
-        const val ANSI_CYAN = "\u001B[36m"
-        const val ANSI_WHITE = "\u001B[37m"
-        var DEFAULT_CONTROLLER_COLOR = ANSI_CYAN
-        var isDebugEnabled = true
-        fun getLogger(loggedClass: Class<*>): Logger {
-            val newLogger = Logger(loggedClass.name)
-            val split = loggedClass.toString().split(".")
-            newLogger.name = split[split.size - 1]
-            return newLogger
+        lateinit var logDirectory: File
+        lateinit var logFile: File
+        var showDebug = true
+        val logger = Logger("main")
+        fun KClass<*>.logger() = Logger(this.java.simpleName)
+        private fun getCurrentDay(): String {
+            val current = LocalDateTime.now()
+            val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+            return current.format(formatter)
         }
 
-        fun generateError(s: String): String {
-            if (s.length < 5) return ""
-            val lines = s.split(" at ").toTypedArray()
-            val output = StringBuilder()
-            if (lines.isNotEmpty()) {
-                for (line in lines) {
-                    if (line.length < 10) continue
-                    output.append(line.replace("\n", "")).append("\n")
-                }
-            }
-            return ANSI_RED + output + ANSI_RESET
+        private fun getCurrentTime(): String {
+            val current = LocalDateTime.now()
+            val formatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+            return "[${current.format(formatter)}] "
+        }
+
+        /**
+         * This is purely for quick testing of behavior
+         */
+        @JvmStatic
+        fun main(args: Array<String>) {
+            val meteorDir = File(System.getProperty("user.home"), ".meteor")
+            logDirectory = File(meteorDir, "logs")
+            logDirectory.mkdirs()
+            logFile = File(logDirectory, "${getCurrentDay()}.txt")
+            val logger = Logger::class.logger()
+            val e = RuntimeException("testing")
+            logger.error(e)
+            logger.info("NH_INFO")
+            logger.warn("NH_WARN")
+            logger.error("NH_ERROR")
+            logger.debug("NH_DEBUG")
+            logger.info("INFO", headerText = "1")
+            logger.info("INFO", headerText = "HEADER")
+            logger.warn("WARN", headerText = "LONGER_HEADER")
+            logger.error("ERROR", headerText = "ERROR_LEVEL_HEADER")
+            logger.info("INFO", headerText = "HEADER")
+            logger.warn("WARN", headerText = "LONGER_HEADER")
+            logger.error("COLORED-NAME", headerColor = ANSI_PURPLE, headerText = "PURPLE")
         }
     }
 }
